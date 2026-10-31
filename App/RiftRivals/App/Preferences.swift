@@ -23,6 +23,7 @@ final class Preferences: ObservableObject {
     let deviceToken: UInt64
 
     private init() {
+        let d = UserDefaults.standard
         func bool(_ k: String, _ def: Bool) -> Bool { d.object(forKey: k) == nil ? def : d.bool(forKey: k) }
         playerName = d.string(forKey: "playerName") ?? Preferences.randomName()
         soundVolume = d.object(forKey: "soundVolume") == nil ? 0.8 : d.double(forKey: "soundVolume")

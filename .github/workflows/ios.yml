@@ -61,8 +61,9 @@ jobs:
           set -o pipefail
           xcodebuild -project RiftRivals.xcodeproj -scheme RiftRivals -configuration Debug \
             -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
-            -derivedDataPath build/sim CODE_SIGNING_ALLOWED=NO build | tee build-sim.log | grep -E "error:|warning: .*deprecated|BUILD" || true
-          test -d build/sim/Build/Products/Debug-iphonesimulator/RiftRivals.app
+            -derivedDataPath build/sim CODE_SIGNING_ALLOWED=NO build > build-sim.log 2>&1 || { grep -E "error:" build-sim.log | sort -u | head -80; tail -30 build-sim.log; exit 1; }
+          grep -E "BUILD SUCCEEDED" build-sim.log
+          test -f build/sim/Build/Products/Debug-iphonesimulator/RiftRivals.app/RiftRivals
 
       - name: Install and launch in Simulator
         run: |
@@ -71,7 +72,8 @@ jobs:
           import json,sys
           d=json.load(sys.stdin)["devices"]
           c=[x for r,l in d.items() if "iOS" in r for x in l if x["name"].startswith("iPhone")]
-          c.sort(key=lambda x: x["name"], reverse=True)
+          pref=[x for x in c if "Pro" in x["name"]] or c
+          c=sorted(pref, key=lambda x: x["name"], reverse=True)
           print(c[0]["udid"])')
           echo "Using simulator $UDID"
           xcrun simctl boot "$UDID"
@@ -100,8 +102,9 @@ jobs:
           xcodebuild -project RiftRivals.xcodeproj -scheme RiftRivals -configuration Release \
             -sdk iphoneos -destination 'generic/platform=iOS' \
             -archivePath build/RiftRivals.xcarchive archive \
-            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" | tee build-archive.log | grep -E "error:|ARCHIVE" || true
-          test -d build/RiftRivals.xcarchive/Products/Applications/RiftRivals.app
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" > build-archive.log 2>&1 || { grep -E "error:" build-archive.log | sort -u | head -80; tail -30 build-archive.log; exit 1; }
+          grep -E "ARCHIVE SUCCEEDED" build-archive.log
+          test -f build/RiftRivals.xcarchive/Products/Applications/RiftRivals.app/RiftRivals
 
       - name: Package and verify IPA
         run: |
