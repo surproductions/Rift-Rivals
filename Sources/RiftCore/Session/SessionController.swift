@@ -8,13 +8,14 @@ public final class PracticeSession {
     private var clock = FixedStepClock()
     public private(set) var paused = false
 
-    public init(settings: MatchSettings, playerName: String, seed: UInt64, now: Double) {
+    /// - Parameter autopilotLocal: the local slot is also bot-driven (attract / demo mode).
+    public init(settings: MatchSettings, playerName: String, seed: UInt64, now: Double, autopilotLocal: Bool = false) {
         var slots: [RosterSlot] = []
         let size = settings.format.teamSize
         for t in 0..<2 {
             for k in 0..<size {
                 if t == 0 && k == 0 {
-                    slots.append(RosterSlot(name: NameRules.sanitize(playerName), isBot: false, memberID: 0))
+                    slots.append(RosterSlot(name: NameRules.sanitize(playerName), isBot: autopilotLocal, memberID: 0))
                 } else {
                     slots.append(RosterSlot(name: BotNames.name(team: t, index: k), isBot: true, memberID: nil))
                 }
@@ -62,9 +63,9 @@ public final class SessionController {
         self.playerName = playerName
     }
 
-    public func startPractice(settings: MatchSettings, seed: UInt64, now: Double) {
+    public func startPractice(settings: MatchSettings, seed: UInt64, now: Double, demo: Bool = false) {
         end()
-        mode = .practice(PracticeSession(settings: settings, playerName: playerName, seed: seed, now: now))
+        mode = .practice(PracticeSession(settings: settings, playerName: playerName, seed: seed, now: now, autopilotLocal: demo))
     }
 
     public func host(provider: NetworkProvider, settings: MatchSettings, seed: UInt64, now: Double) throws {

@@ -1,0 +1,158 @@
+name: RIFT RIVALS CI
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Publish a GitHub Release with this tag (e.g. v1.0.0). Leave empty for a build only."
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  core-linux:
+    name: Engine tests (Linux)
+    runs-on: ubuntu-latest
+    container: swift:6.0
+    steps:
+      - uses: actions/checkout@v4
+      - name: Unit + multiplayer tests
+        run: swift test
+      - name: Network test matrix
+        run: swift run -c release riftsim --out network-results-linux.md
+      - uses: actions/upload-artifact@v4
+        with:
+          name: network-results-linux
+          path: network-results-linux.md
+
+  ios:
+    name: iOS build, launch test, IPA
+    runs-on: macos-15
+    timeout-minutes: 60
+    env:
+      VERSION: "1.0.0"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+          xcrun simctl list runtimes
+
+      - name: Engine tests (macOS)
+        run: swift test
+
+      - name: Network test matrix (macOS)
+        run: swift run -c release riftsim --out network-results-macos.md
+
+      - name: Build for iOS Simulator
+        run: |
+          set -o pipefail
+          xcodebuild -project RiftRivals.xcodeproj -scheme RiftRivals -configuration Debug \
+            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build/sim CODE_SIGNING_ALLOWED=NO build | tee build-sim.log | grep -E "error:|warning: .*deprecated|BUILD" || true
+          test -d build/sim/Build/Products/Debug-iphonesimulator/RiftRivals.app
+
+      - name: Install and launch in Simulator
+        run: |
+          set -euo pipefail
+          UDID=$(xcrun simctl list devices available -j | python3 -c '
+          import json,sys
+          d=json.load(sys.stdin)["devices"]
+          c=[x for r,l in d.items() if "iOS" in r for x in l if x["name"].startswith("iPhone")]
+          c.sort(key=lambda x: x["name"], reverse=True)
+          print(c[0]["udid"])')
+          echo "Using simulator $UDID"
+          xcrun simctl boot "$UDID"
+          xcrun simctl bootstatus "$UDID" -b
+          APP=build/sim/Build/Products/Debug-iphonesimulator/RiftRivals.app
+          xcrun simctl install "$UDID" "$APP"
+          mkdir -p screenshots
+          # 1) Normal launch: tutorial / menu.
+          xcrun simctl launch "$UDID" com.surproductions.riftrivals
+          sleep 8
+          xcrun simctl io "$UDID" screenshot screenshots/01-launch.png
+          xcrun simctl spawn "$UDID" launchctl list | grep -q "com.surproductions.riftrivals" || { echo "App is not running after launch"; exit 1; }
+          xcrun simctl terminate "$UDID" com.surproductions.riftrivals
+          # 2) Demo mode: a full 2v2 bot match renders and runs.
+          xcrun simctl launch "$UDID" com.surproductions.riftrivals -RiftDemo
+          sleep 12
+          xcrun simctl io "$UDID" screenshot screenshots/02-match.png
+          sleep 10
+          xcrun simctl io "$UDID" screenshot screenshots/03-match-later.png
+          xcrun simctl spawn "$UDID" launchctl list | grep -q "com.surproductions.riftrivals" || { echo "App crashed during the demo match"; exit 1; }
+          echo "Simulator launch test passed"
+
+      - name: Archive (Release, iphoneos, unsigned)
+        run: |
+          set -o pipefail
+          xcodebuild -project RiftRivals.xcodeproj -scheme RiftRivals -configuration Release \
+            -sdk iphoneos -destination 'generic/platform=iOS' \
+            -archivePath build/RiftRivals.xcarchive archive \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" | tee build-archive.log | grep -E "error:|ARCHIVE" || true
+          test -d build/RiftRivals.xcarchive/Products/Applications/RiftRivals.app
+
+      - name: Package and verify IPA
+        run: |
+          set -euo pipefail
+          rm -rf Payload && mkdir Payload
+          cp -R build/RiftRivals.xcarchive/Products/Applications/RiftRivals.app Payload/
+          IPA="RiftRivals-v${VERSION}-unsigned.ipa"
+          ditto -c -k --sequesterRsrc --keepParent Payload "$IPA"
+          echo "--- IPA contents"
+          unzip -l "$IPA" | head -30
+          echo "--- Info.plist"
+          plutil -p Payload/RiftRivals.app/Info.plist
+          plutil -extract NSBonjourServices json -o - Payload/RiftRivals.app/Info.plist
+          plutil -extract NSLocalNetworkUsageDescription raw -o - Payload/RiftRivals.app/Info.plist
+          echo "--- Binary"
+          lipo -info Payload/RiftRivals.app/RiftRivals
+          file Payload/RiftRivals.app/RiftRivals | grep -q arm64
+          test -f Payload/RiftRivals.app/Assets.car
+          codesign -dv Payload/RiftRivals.app 2>&1 || echo "(unsigned, as expected)"
+          shasum -a 256 "$IPA" | tee "$IPA.sha256"
+          ls -la "$IPA"
+          echo "IPA=$IPA" >> "$GITHUB_ENV"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RiftRivals-ipa
+          path: |
+            ${{ env.IPA }}
+            ${{ env.IPA }}.sha256
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: screenshots-and-logs
+          path: |
+            screenshots/
+            build-sim.log
+            build-archive.log
+            network-results-macos.md
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v') || github.event.inputs.release_tag != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${{ github.event.inputs.release_tag }}"
+          if [ -z "$TAG" ]; then TAG="${GITHUB_REF_NAME}"; fi
+          NOTES=RELEASE_NOTES.md
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$IPA" "$IPA.sha256" screenshots/*.png network-results-macos.md --clobber
+          else
+            gh release create "$TAG" "$IPA" "$IPA.sha256" screenshots/*.png network-results-macos.md \
+              --title "RIFT RIVALS $TAG" --notes-file "$NOTES" --target "$GITHUB_SHA"
+          fi
