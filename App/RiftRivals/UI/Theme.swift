@@ -183,6 +183,7 @@ struct QualityDot: View {
             case "Excellent": return Palette.ok
             case "Good": return Color(hex: 0xB8F25C)
             case "Unstable": return Palette.gold
+            case "Local": return Palette.rift
             default: return Palette.danger
             }
         }()

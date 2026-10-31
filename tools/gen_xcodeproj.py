@@ -17,8 +17,8 @@ CORE_DIR = "Sources/RiftCore"
 # Test-only infrastructure is not shipped in the app.
 CORE_EXCLUDE = {"Session/NetTestbed.swift", "Net/SimulatedNetwork.swift"}
 BUNDLE_ID = "com.surproductions.riftrivals"
-VERSION = "1.0.0"
-BUILD = "1"
+VERSION = "1.0.1"
+BUILD = "2"
 
 
 def oid(*parts):

@@ -1,5 +1,12 @@
 # RIFT RIVALS — Release Notes
 
+## v1.0.1
+
+* Fix: the connection indicator showed a red dot in offline Practice; it now
+  shows a neutral "Local" badge.
+* Release assets now include in-game screenshots captured from the iOS
+  Simulator by CI.
+
 ## v1.0.0 — first release
 
 The first complete build of RIFT RIVALS, an original local-multiplayer arena

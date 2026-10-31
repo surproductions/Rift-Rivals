@@ -13,6 +13,8 @@ Under the hood: a deterministic fixed-point simulation at 60 Hz with
 timeline, state checksums with automatic repair, reconnection, pause, and
 **host migration**.
 
+![RIFT RIVALS 2v2 on Pillar Drift (iOS Simulator, captured by CI)](docs/screenshots/match.png)
+
 | Doc | What's inside |
 |---|---|
 | [docs/GAME_DESIGN.md](docs/GAME_DESIGN.md) | Concept, mechanics, arenas, why it works in local multiplayer |
@@ -62,7 +64,7 @@ distribution.
 
 ### Option C — Re-sign the IPA with your developer certificate
 ```bash
-unzip RiftRivals-v1.0.0-unsigned.ipa
+unzip RiftRivals-v1.0.1-unsigned.ipa
 cp ~/Downloads/YourProfile.mobileprovision Payload/RiftRivals.app/embedded.mobileprovision
 codesign -f -s "Apple Development: Your Name (TEAMID)" --entitlements entitlements.plist Payload/RiftRivals.app
 zip -qr RiftRivals-signed.ipa Payload
