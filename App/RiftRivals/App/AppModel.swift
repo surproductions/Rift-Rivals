@@ -92,12 +92,14 @@ final class AppModel: ObservableObject {
         } else {
             practiceSettings = MatchSettings(format: .duo, roundSeconds: 120, goalsToWin: 5, bestOf: 1, arena: .foundry, botDifficulty: .normal)
         }
-        let link = CADisplayLink(target: self, selector: #selector(displayTick))
+        let proxy = DisplayLinkProxy()
+        let link = CADisplayLink(target: proxy, selector: #selector(DisplayLinkProxy.fire))
         if #available(iOS 15.0, *) {
             link.preferredFrameRateRange = CAFrameRateRange(minimum: 30, maximum: 60, preferred: 60)
         }
         link.add(to: .main, forMode: .common)
         displayLink = link
+        proxy.handler = { [weak self] in self?.displayTick() }
         // Attract/demo mode used by CI to verify rendering: a full bot match.
         if ProcessInfo.processInfo.arguments.contains("-RiftDemo") {
             Preferences.shared.hasSeenTutorial = true
@@ -114,7 +116,7 @@ final class AppModel: ObservableObject {
 
     // MARK: - Loop
 
-    @objc private func displayTick() {
+    private func displayTick() {
         let now = CACurrentMediaTime()
         // While the game scene renders it drives the loop itself (frame-aligned at up to 120 Hz).
         if now - lastSceneFrame > 0.1 { step(now: now) }
@@ -374,4 +376,11 @@ final class AppModel: ObservableObject {
         // A host that was away long enough to be replaced steps down automatically
         // (HostSession watches discovery for a newer host of the same match).
     }
+}
+
+/// CADisplayLink needs an Objective-C target; this forwards to a closure
+/// without creating a retain cycle with the model.
+final class DisplayLinkProxy: NSObject {
+    var handler: (() -> Void)?
+    @objc func fire() { handler?() }
 }
